@@ -1,0 +1,159 @@
+name: terrafrom-terratest-validation
+
+on:
+  push:
+    branches:
+      - 'feature/*'   
+  pull_request:
+    branches:
+      - master
+
+jobs:
+  terratest:
+    name: Terraform EC2 Terratest Validation
+    runs-on: ubuntu-latest
+
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_REGION: "us-east-2"
+      TF_VERSION: "1.7.5"
+      #TF_TOKEN_app_terraform_io: ${{ secrets.TERRAFORM_CLOUD_API_TOKEN }}
+
+    steps:
+      # -------------------------
+      # Checkout Code
+      # -------------------------
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      # -------------------------
+      # Setup Terraform
+      # -------------------------
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Verify Terraform Version
+        run: terraform version
+
+      # -------------------------
+      # Setup Go
+      # -------------------------
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+
+      # -------------------------
+      # Download Go Modules
+      # -------------------------
+      - name: Download Go Modules
+        run: |
+          cd test
+          go mod download
+
+      # -------------------------
+      # Terraform Init
+      # -------------------------
+      - name: Terraform Init
+        run: |
+          cd example/basic
+          terraform init -input=false
+
+      # -------------------------
+      # Terraform Validate
+      # -------------------------
+      - name: Terraform Validate
+        run: |
+          cd example/basic
+          terraform validate
+
+      # -------------------------
+      # Terraform Plan
+      # -------------------------
+      - name: Terraform Plan
+        run: |
+          cd example/basic
+          terraform plan -input=false
+
+      # -------------------------
+      # Run Terratest
+      # -------------------------
+      - name: Run Terratest
+        run: |
+          cd test
+          go test -v -timeout 30m
+ version-bump:
+    needs: terraform-checks
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+ 
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+ 
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+ 
+      - name: Determine version bump from PR labels
+        id: bump
+        run: |
+          git fetch --tags
+ 
+          latest_tag=$(git tag --sort=-v:refname | head -n 1)
+ 
+          if [ -z "$latest_tag" ]; then
+            major=1
+            minor=0
+            patch=0
+         
+          else
+            version=${latest_tag#v}
+            IFS='.' read -r major minor patch <<< "$version"
+          fi
+ 
+          # Get merged PR number
+          pr_number=$(gh pr list --state merged --limit 1 --json number --jq '.[0].number')
+ 
+          # Fetch labels
+          labels=$(gh pr view "$pr_number" --json labels --jq '.labels[].name' | tr '[:upper:]' '[:lower:]')
+ 
+          echo "PR Labels:"
+          echo "$labels"
+ 
+          bump_type="patch"
+ 
+          if echo "$labels" | grep -qx "major"; then
+            bump_type="major"
+          elif echo "$labels" | grep -qx "minor"; then
+            bump_type="minor"
+          fi
+ 
+          if [ "$bump_type" = "major" ]; then
+            major=$((major + 1))
+            minor=0
+            patch=0
+          elif [ "$bump_type" = "minor" ]; then
+            minor=$((minor + 1))
+            patch=0
+          else
+            patch=$((patch + 1))
+          fi
+ 
+          new_tag="v$major.$minor.$patch"
+          echo "new_tag=$new_tag" >> $GITHUB_OUTPUT
+ 
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+ 
+      - name: Create and push tag
+        run: |
+          git tag ${{ steps.bump.outputs.new_tag }}
+          git push origin ${{ steps.bump.outputs.new_tag }}
+#
