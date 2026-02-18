@@ -4,7 +4,7 @@ module "ec2_public" {
   
   name                     = var.name
   ami                      = var.ami
-  instance_type            = var.instance_type 
+  #instance_type            = var.instance_type 
   subnet_id                = var.subnet_ids[0]   # must be a string
   key_name                 = var.key_name
   vpc_security_group_ids   = var.security_group_ids
@@ -12,3 +12,4 @@ module "ec2_public" {
 }
   
 ##
+
