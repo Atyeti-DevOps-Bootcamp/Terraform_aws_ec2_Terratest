@@ -3,7 +3,8 @@ name: terraform-terratest-validation
 on:
   push:
     branches:
-      - 'feature/*'
+      - main
+      # - 'feature/*'
   pull_request:
     branches:
       - main
