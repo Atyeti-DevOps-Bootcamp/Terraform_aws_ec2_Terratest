@@ -3,10 +3,11 @@ name: terrafrom-terratest-validation
 on:
   push:
     branches:
-      - 'feature/*'   
+      - main
+      #- 'feature/*'   
   pull_request:
     branches:
-      - master
+      - main
 
 jobs:
   terratest:
