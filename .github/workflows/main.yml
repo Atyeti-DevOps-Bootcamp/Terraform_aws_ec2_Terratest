@@ -4,160 +4,205 @@ on:
   push:
     branches:
       - main
-      # - 'feature/*'
+
   pull_request:
     branches:
       - main
+    types: [opened, synchronize, reopened, closed]
+
 permissions:
   contents: write
   pull-requests: read
-  
+
 jobs:
+
+  # ------------------------------------------------
+  # JOB 1: Run Terraform + Terratest validation
+  # ------------------------------------------------
   terratest:
+
     name: Terraform EC2 Terratest Validation
     runs-on: ubuntu-latest
+
+    # Run only when PR open/update OR push
+    if: github.event_name != 'pull_request' || github.event.pull_request.merged != true
 
     env:
       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
       AWS_REGION: "us-east-2"
       TF_VERSION: "1.7.5"
-      # TF_TOKEN_app_terraform_io: ${{ secrets.TERRAFORM_CLOUD_API_TOKEN }}
 
     steps:
-      # -------------------------
-      # Checkout Code
-      # -------------------------
+
+      # Checkout code
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      # -------------------------
+
       # Setup Terraform
-      # -------------------------
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: ${{ env.TF_VERSION }}
+          terraform_version: ${{ env.TF_VERSION }
 
+
+      # Verify Terraform
       - name: Verify Terraform Version
         run: terraform version
 
-      # -------------------------
+
       # Setup Go
-      # -------------------------
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
           go-version: "1.22"
 
-      # -------------------------
-      # Download Go Modules
-      # -------------------------
+
+      # Download dependencies
       - name: Download Go Modules
         run: |
           cd test
           go mod download
 
-      # -------------------------
+
       # Terraform Init
-      # -------------------------
       - name: Terraform Init
         run: |
           cd example/basic
           terraform init -input=false
 
-      # -------------------------
+
       # Terraform Validate
-      # -------------------------
       - name: Terraform Validate
         run: |
           cd example/basic
           terraform validate
 
-      # -------------------------
+
       # Terraform Plan
-      # -------------------------
       - name: Terraform Plan
         run: |
           cd example/basic
           terraform plan -input=false
 
-      # -------------------------
+
       # Run Terratest
-      # -------------------------
       - name: Run Terratest
         run: |
           cd test
           go test -v -timeout 30m
 
+
+
+  # ------------------------------------------------
+  # JOB 2: Auto Version bump using PR checkbox
+  # ------------------------------------------------
   version-bump:
+
     needs: terratest
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    # Run ONLY when PR merged
+    if: github.event.pull_request.merged == true
 
     steps:
+
+      # Checkout repo with tags
       - name: Checkout repo
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
+
+      # Configure git
       - name: Configure Git
         run: |
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
 
-      - name: Determine version bump from PR labels
-        id: bump
+
+      # Detect version type from PR body
+      - name: Detect version bump type
+        id: bump_type
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_BODY: ${{ github.event.pull_request.body }}
         run: |
+
+          echo "PR BODY:"
+          echo "$PR_BODY"
+
+          if echo "$PR_BODY" | grep -iq "\[x\].*major"; then
+            echo "type=major" >> $GITHUB_OUTPUT
+          elif echo "$PR_BODY" | grep -iq "\[x\].*minor"; then
+            echo "type=minor" >> $GITHUB_OUTPUT
+          elif echo "$PR_BODY" | grep -iq "\[x\].*patch"; then
+            echo "type=patch" >> $GITHUB_OUTPUT
+          else
+            echo "type=patch" >> $GITHUB_OUTPUT
+          fi
+
+
+      # Get latest tag
+      - name: Get latest tag
+        id: get_tag
+        run: |
+
           git fetch --tags
 
           latest_tag=$(git tag --sort=-v:refname | head -n 1)
 
           if [ -z "$latest_tag" ]; then
-            major=1
-            minor=0
-            patch=0
-          else
-            version=${latest_tag#v}
-            IFS='.' read -r major minor patch <<< "$version"
+            latest_tag="v0.0.0"
           fi
 
-          # Get merged PR number
-          pr_number=$(gh pr list --state merged --limit 1 --json number --jq '.[0].number')
+          echo "latest_tag=$latest_tag" >> $GITHUB_OUTPUT
 
-          # Fetch labels
-          labels=$(gh pr view "$pr_number" --json labels --jq '.labels[].name' | tr '[:upper:]' '[:lower:]')
 
-          echo "PR Labels:"
-          echo "$labels"
+      # Calculate new version
+      - name: Calculate new version
+        id: calculate
+        run: |
 
-          bump_type="patch"
+          version=${{ steps.get_tag.outputs.latest_tag }}
 
-          if echo "$labels" | grep -qx "major"; then
-            bump_type="major"
-          elif echo "$labels" | grep -qx "minor"; then
-            bump_type="minor"
-          fi
+          version=${version#v}
 
-          if [ "$bump_type" = "major" ]; then
-            major=$((major + 1))
-            minor=0
-            patch=0
-          elif [ "$bump_type" = "minor" ]; then
-            minor=$((minor + 1))
-            patch=0
-          else
-            patch=$((patch + 1))
-          fi
+          IFS='.' read -r major minor patch <<< "$version"
+
+          case "${{ steps.bump_type.outputs.type }}" in
+
+            major)
+              major=$((major+1))
+              minor=0
+              patch=0
+              ;;
+
+            minor)
+              minor=$((minor+1))
+              patch=0
+              ;;
+
+            patch)
+              patch=$((patch+1))
+              ;;
+
+          esac
 
           new_tag="v$major.$minor.$patch"
+
+          echo "New tag: $new_tag"
+
           echo "new_tag=$new_tag" >> $GITHUB_OUTPUT
 
+
+      # Create and push tag
       - name: Create and push tag
         run: |
-          git tag ${{ steps.bump.outputs.new_tag }}
-          git push origin ${{ steps.bump.outputs.new_tag }}
 
-     #
+          git tag ${{ steps.calculate.outputs.new_tag }}
+
+          git push origin ${{ steps.calculate.outputs.new_tag }}
+
+          echo "Tag pushed successfully"
+
