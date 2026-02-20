@@ -4,14 +4,14 @@ on:
   push:
     branches:
       - main
-      # - 'feature/*'
   pull_request:
     branches:
       - main
+
 permissions:
   contents: write
   pull-requests: read
-  
+
 jobs:
   terratest:
     name: Terraform EC2 Terratest Validation
@@ -22,18 +22,13 @@ jobs:
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
       AWS_REGION: "us-east-2"
       TF_VERSION: "1.7.5"
-      # TF_TOKEN_app_terraform_io: ${{ secrets.TERRAFORM_CLOUD_API_TOKEN }}
 
     steps:
-      # -------------------------
-      # Checkout Code
-      # -------------------------
+      # Checkout
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      # -------------------------
       # Setup Terraform
-      # -------------------------
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
@@ -42,49 +37,37 @@ jobs:
       - name: Verify Terraform Version
         run: terraform version
 
-      # -------------------------
       # Setup Go
-      # -------------------------
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
           go-version: "1.22"
 
-      # -------------------------
       # Download Go Modules
-      # -------------------------
       - name: Download Go Modules
         run: |
           cd test
           go mod download
 
-      # -------------------------
       # Terraform Init
-      # -------------------------
       - name: Terraform Init
         run: |
           cd example/basic
           terraform init -input=false
 
-      # -------------------------
       # Terraform Validate
-      # -------------------------
       - name: Terraform Validate
         run: |
           cd example/basic
           terraform validate
 
-      # -------------------------
       # Terraform Plan
-      # -------------------------
       - name: Terraform Plan
         run: |
           cd example/basic
           terraform plan -input=false
 
-      # -------------------------
       # Run Terratest
-      # -------------------------
       - name: Run Terratest
         run: |
           cd test
@@ -124,21 +107,26 @@ jobs:
             IFS='.' read -r major minor patch <<< "$version"
           fi
 
-          # Get merged PR number
-          pr_number=$(gh pr list --state merged --limit 1 --json number --jq '.[0].number')
-
-          # Fetch labels
-          labels=$(gh pr view "$pr_number" --json labels --jq '.labels[].name' | tr '[:upper:]' '[:lower:]')
-
-          echo "PR Labels:"
-          echo "$labels"
+          # Extract PR number from merge commit message
+          pr_number=$(jq --raw-output .head_commit.message "$GITHUB_EVENT_PATH" | grep -oE '#[0-9]+' | tr -d '#')
 
           bump_type="patch"
 
-          if echo "$labels" | grep -qx "major"; then
-            bump_type="major"
-          elif echo "$labels" | grep -qx "minor"; then
-            bump_type="minor"
+          if [ -z "$pr_number" ]; then
+            echo "No PR found in commit message. Defaulting to patch."
+          else
+            echo "Merged PR: $pr_number"
+
+            labels=$(gh pr view "$pr_number" --json labels --jq '.labels[].name' | tr '[:upper:]' '[:lower:]')
+
+            echo "PR Labels:"
+            echo "$labels"
+
+            if echo "$labels" | grep -qx "major"; then
+              bump_type="major"
+            elif echo "$labels" | grep -qx "minor"; then
+              bump_type="minor"
+            fi
           fi
 
           if [ "$bump_type" = "major" ]; then
@@ -153,11 +141,11 @@ jobs:
           fi
 
           new_tag="v$major.$minor.$patch"
+          echo "New tag: $new_tag"
+
           echo "new_tag=$new_tag" >> $GITHUB_OUTPUT
 
       - name: Create and push tag
         run: |
           git tag ${{ steps.bump.outputs.new_tag }}
           git push origin ${{ steps.bump.outputs.new_tag }}
-
-     
