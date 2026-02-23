@@ -6,10 +6,10 @@ on:
     types:
       - opened
       - edited
-      - labeled
-      - unlabeled
       - synchronize
       - reopened
+      - labeled
+      - unlabeled
 
 permissions:
   pull-requests: write
@@ -26,29 +26,26 @@ jobs:
           script: |
             const pr = context.payload.pull_request;
             const body = pr.body || "";
-
             const owner = context.repo.owner;
             const repo = context.repo.repo;
             const issue_number = pr.number;
 
             const versionLabels = ["major", "minor", "patch"];
 
-            let selectedLabels = [];
+            // Detect checked checkbox
+            let selected = "patch"; // default
 
-            if (body.includes("- [x] `major`")) {
-              selectedLabels.push("major");
+            if (body.includes("- [x] major")) {
+              selected = "major";
+            } else if (body.includes("- [x] minor")) {
+              selected = "minor";
+            } else if (body.includes("- [x] patch")) {
+              selected = "patch";
             }
 
-            if (body.includes("- [x] `minor`")) {
-              selectedLabels.push("minor");
-            }
+            console.log("Selected version:", selected);
 
-            if (body.includes("- [x] `patch`")) {
-              selectedLabels.push("patch");
-            }
-
-            console.log("Selected Labels:", selectedLabels);
-
+            // Get existing labels
             const { data: existingLabels } = await github.rest.issues.listLabelsOnIssue({
               owner,
               repo,
@@ -57,9 +54,9 @@ jobs:
 
             const existingNames = existingLabels.map(l => l.name.toLowerCase());
 
-            // Remove old version labels
+            // Remove other version labels
             for (const label of versionLabels) {
-              if (existingNames.includes(label) && !selectedLabels.includes(label)) {
+              if (existingNames.includes(label) && label !== selected) {
                 await github.rest.issues.removeLabel({
                   owner,
                   repo,
@@ -69,14 +66,12 @@ jobs:
               }
             }
 
-            // Add selected labels
-            for (const label of selectedLabels) {
-              if (!existingNames.includes(label)) {
-                await github.rest.issues.addLabels({
-                  owner,
-                  repo,
-                  issue_number,
-                  labels: [label]
-                });
-              }
+            // Add selected label if missing
+            if (!existingNames.includes(selected)) {
+              await github.rest.issues.addLabels({
+                owner,
+                repo,
+                issue_number,
+                labels: [selected]
+              });
             }
