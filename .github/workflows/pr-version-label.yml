@@ -24,6 +24,8 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
+            const core = require('@actions/core');
+
             const pr = context.payload.pull_request;
             const body = pr.body || "";
 
@@ -32,9 +34,9 @@ jobs:
             const issue_number = pr.number;
 
             const versionLabels = ["major", "minor", "patch"];
-
             let selectedLabels = [];
 
+            // Detect selected checkboxes
             if (body.includes("- [x] `major`")) {
               selectedLabels.push("major");
             }
@@ -49,6 +51,18 @@ jobs:
 
             console.log("Selected Labels:", selectedLabels);
 
+            //  VALIDATION: Must select exactly ONE checkbox
+            if (selectedLabels.length === 0) {
+              core.setFailed(" You must select EXACTLY ONE version checkbox (major, minor, or patch).");
+              return;
+            }
+
+            if (selectedLabels.length > 1) {
+              core.setFailed(" You can select ONLY ONE version checkbox.");
+              return;
+            }
+
+            // Get existing labels on PR
             const { data: existingLabels } = await github.rest.issues.listLabelsOnIssue({
               owner,
               repo,
@@ -60,6 +74,7 @@ jobs:
             // Remove old version labels
             for (const label of versionLabels) {
               if (existingNames.includes(label) && !selectedLabels.includes(label)) {
+                console.log(`Removing label: ${label}`);
                 await github.rest.issues.removeLabel({
                   owner,
                   repo,
@@ -69,14 +84,17 @@ jobs:
               }
             }
 
-            // Add selected labels
-            for (const label of selectedLabels) {
-              if (!existingNames.includes(label)) {
-                await github.rest.issues.addLabels({
-                  owner,
-                  repo,
-                  issue_number,
-                  labels: [label]
-                });
-              }
+            // Add selected label if missing
+            const selected = selectedLabels[0];
+
+            if (!existingNames.includes(selected)) {
+              console.log(`Adding label: ${selected}`);
+              await github.rest.issues.addLabels({
+                owner,
+                repo,
+                issue_number,
+                labels: [selected]
+              });
             }
+
+            console.log(" Version label successfully synced.");
