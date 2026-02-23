@@ -32,17 +32,14 @@ jobs:
             const issue_number = pr.number;
 
             const versionLabels = ["major", "minor", "patch"];
-
             let selectedLabels = [];
 
             if (body.includes("- [x] `major`")) {
               selectedLabels.push("major");
             }
-
             if (body.includes("- [x] `minor`")) {
               selectedLabels.push("minor");
             }
-
             if (body.includes("- [x] `patch`")) {
               selectedLabels.push("patch");
             }
@@ -57,9 +54,9 @@ jobs:
 
             const existingNames = existingLabels.map(l => l.name.toLowerCase());
 
-            // Remove old version labels
+            // Remove all existing version labels first
             for (const label of versionLabels) {
-              if (existingNames.includes(label) && !selectedLabels.includes(label)) {
+              if (existingNames.includes(label)) {
                 await github.rest.issues.removeLabel({
                   owner,
                   repo,
@@ -69,14 +66,24 @@ jobs:
               }
             }
 
-            // Add selected labels
-            for (const label of selectedLabels) {
-              if (!existingNames.includes(label)) {
-                await github.rest.issues.addLabels({
-                  owner,
-                  repo,
-                  issue_number,
-                  labels: [label]
-                });
-              }
+            // If nothing selected → default to patch
+            if (selectedLabels.length === 0) {
+              selectedLabels = ["patch"];
             }
+
+            // Add only ONE label (priority: major > minor > patch)
+            let finalLabel = "patch";
+            if (selectedLabels.includes("major")) {
+              finalLabel = "major";
+            } else if (selectedLabels.includes("minor")) {
+              finalLabel = "minor";
+            }
+
+            await github.rest.issues.addLabels({
+              owner,
+              repo,
+              issue_number,
+              labels: [finalLabel]
+            });
+
+            console.log("Final Label Applied:", finalLabel);
