@@ -99,7 +99,7 @@ jobs:
           latest_tag=$(git tag --sort=-v:refname | head -n 1)
 
           if [ -z "$latest_tag" ]; then
-            major=1
+            major=0
             minor=0
             patch=0
           else
@@ -107,42 +107,49 @@ jobs:
             IFS='.' read -r major minor patch <<< "$version"
           fi
 
-          # Extract PR number from merge commit message
+          # Extract PR number
           pr_number=$(jq --raw-output .head_commit.message "$GITHUB_EVENT_PATH" | grep -oE '#[0-9]+' | tr -d '#')
 
-          bump_type="patch"
-
           if [ -z "$pr_number" ]; then
-            echo "No PR found in commit message. Defaulting to patch."
+            echo "No PR found. Default patch bump."
+            patch=$((patch + 1))
           else
-            echo "Merged PR: $pr_number"
-
             labels=$(gh pr view "$pr_number" --json labels --jq '.labels[].name' | tr '[:upper:]' '[:lower:]')
 
             echo "PR Labels:"
             echo "$labels"
 
-            if echo "$labels" | grep -qx "major"; then
-              bump_type="major"
-            elif echo "$labels" | grep -qx "minor"; then
-              bump_type="minor"
-            fi
-          fi
+            has_major=false
+            has_minor=false
+            has_patch=false
 
-          if [ "$bump_type" = "major" ]; then
-            major=$((major + 1))
-            minor=0
-            patch=0
-          elif [ "$bump_type" = "minor" ]; then
-            minor=$((minor + 1))
-            patch=0
-          else
-            patch=$((patch + 1))
+            if echo "$labels" | grep -qx "major"; then
+              has_major=true
+            fi
+
+            if echo "$labels" | grep -qx "minor"; then
+              has_minor=true
+            fi
+
+            if echo "$labels" | grep -qx "patch"; then
+              has_patch=true
+            fi
+
+            if [ "$has_major" = true ]; then
+              major=$((major + 1))
+            fi
+
+            if [ "$has_minor" = true ]; then
+              minor=$((minor + 1))
+            fi
+
+            if [ "$has_patch" = true ]; then
+              patch=$((patch + 1))
+            fi
           fi
 
           new_tag="v$major.$minor.$patch"
           echo "New tag: $new_tag"
-
           echo "new_tag=$new_tag" >> $GITHUB_OUTPUT
 
       - name: Create and push tag
