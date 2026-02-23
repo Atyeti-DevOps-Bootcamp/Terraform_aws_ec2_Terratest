@@ -1,5 +1,5 @@
 name: terraform-terratest-validation
-
+ 
 on:
   push:
     branches:
@@ -7,97 +7,97 @@ on:
   pull_request:
     branches:
       - main
-
+ 
 permissions:
   contents: write
   pull-requests: read
-
+ 
 jobs:
   terratest:
     name: Terraform EC2 Terratest Validation
     runs-on: ubuntu-latest
-
+ 
     env:
       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
       AWS_REGION: "us-east-2"
       TF_VERSION: "1.7.5"
-
+ 
     steps:
       # Checkout
       - name: Checkout Repository
         uses: actions/checkout@v4
-
+ 
       # Setup Terraform
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: ${{ env.TF_VERSION }}
-
+ 
       - name: Verify Terraform Version
         run: terraform version
-
+ 
       # Setup Go
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
           go-version: "1.22"
-
+ 
       # Download Go Modules
       - name: Download Go Modules
         run: |
           cd test
           go mod download
-
+ 
       # Terraform Init
       - name: Terraform Init
         run: |
           cd example/basic
           terraform init -input=false
-
+ 
       # Terraform Validate
       - name: Terraform Validate
         run: |
           cd example/basic
           terraform validate
-
+ 
       # Terraform Plan
       - name: Terraform Plan
         run: |
           cd example/basic
           terraform plan -input=false
-
+ 
       # Run Terratest
       - name: Run Terratest
         run: |
           cd test
           go test -v -timeout 30m
-
+ 
   version-bump:
     needs: terratest
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-
+ 
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
+ 
       - name: Configure Git
         run: |
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
-
+ 
       - name: Determine version bump from PR labels
         id: bump
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           git fetch --tags
-
+ 
           latest_tag=$(git tag --sort=-v:refname | head -n 1)
-
+ 
           if [ -z "$latest_tag" ]; then
             major=1
             minor=0
@@ -106,29 +106,29 @@ jobs:
             version=${latest_tag#v}
             IFS='.' read -r major minor patch <<< "$version"
           fi
-
+ 
           # Extract PR number from merge commit message
           pr_number=$(jq --raw-output .head_commit.message "$GITHUB_EVENT_PATH" | grep -oE '#[0-9]+' | tr -d '#')
-
+ 
           bump_type="patch"
-
+ 
           if [ -z "$pr_number" ]; then
             echo "No PR found in commit message. Defaulting to patch."
           else
             echo "Merged PR: $pr_number"
-
+ 
             labels=$(gh pr view "$pr_number" --json labels --jq '.labels[].name' | tr '[:upper:]' '[:lower:]')
-
+ 
             echo "PR Labels:"
             echo "$labels"
-
+ 
             if echo "$labels" | grep -qx "major"; then
               bump_type="major"
             elif echo "$labels" | grep -qx "minor"; then
               bump_type="minor"
             fi
           fi
-
+ 
           if [ "$bump_type" = "major" ]; then
             major=$((major + 1))
             minor=0
@@ -139,12 +139,12 @@ jobs:
           else
             patch=$((patch + 1))
           fi
-
+ 
           new_tag="v$major.$minor.$patch"
           echo "New tag: $new_tag"
-
+ 
           echo "new_tag=$new_tag" >> $GITHUB_OUTPUT
-
+ 
       - name: Create and push tag
         run: |
           git tag ${{ steps.bump.outputs.new_tag }}
