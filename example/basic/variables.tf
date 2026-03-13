@@ -37,9 +37,10 @@ variable "environment" {
 variable "aws_region" {
   type        = string
   description = "AWS region to deploy resources"
-  default     = "us-east-2"
+  default     = "us-east-1"
 }
 variable "default_tags" {
   description = "Global default tags"
   type        = map(string)
+
 }
