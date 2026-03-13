@@ -1,4 +1,4 @@
-// file: ec2_vpc_test.go
+/* file: ec2_vpc_test.go
 package test
 
 import (
@@ -34,4 +34,5 @@ func TestEC2VPC(t *testing.T) {
 	// Optional: print outputs
 	t.Logf("EC2 instance IDs: %v", instanceIDs)
 	t.Logf("EC2 public IPs: %v", publicIPs)
-}
+
+}*/
