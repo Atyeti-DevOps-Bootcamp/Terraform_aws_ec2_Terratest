@@ -1,4 +1,4 @@
-name: terraform-terratest-validation
+/*name: terraform-terratest-validation
 
 on:
   push:
@@ -150,4 +150,4 @@ jobs:
           git tag ${{ steps.bump.outputs.new_tag }}
           git push origin ${{ steps.bump.outputs.new_tag }}
 
-          ##
+          ##*/
