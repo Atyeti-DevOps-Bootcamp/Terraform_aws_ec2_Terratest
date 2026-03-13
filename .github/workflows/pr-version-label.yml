@@ -1,4 +1,4 @@
-name: Release Pull Request Version Label
+/*name: Release Pull Request Version Label
 
 on:
   workflow_dispatch:
@@ -86,5 +86,4 @@ jobs:
               labels: [finalLabel]
             });
 
-            console.log("Final Label Applied:", finalLabel);
-#
+            console.log("Final Label Applied:", finalLabel);*/
