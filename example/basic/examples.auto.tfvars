@@ -1,5 +1,5 @@
 name               ="WAForge-test-ec2"
-aws_region         = "us-east-1"
+aws_region         = "us-west-1"
 ami                = "ami-06e3c045d79fd65d9"
 instance_type      = "t3.micro"
 key_name           = "jaya.randhi_atyeti_key"
